@@ -41,6 +41,37 @@
       timeout: 5s
       retries: 5
 
+
+  kafka:
+    image: apache/kafka:4.4.0
+    container_name: telecom-kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+  rabbitmq:
+    image: rabbitmq:4.2-management
+    container_name: telecom-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
 volumes:
   mysql_data:
   redis_data:
+  kafka_data:
+  rabbitmq_data:
