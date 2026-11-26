@@ -126,6 +126,24 @@ public class CustomerController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/{accountNumber}/status-history")
+    public ResponseEntity<ApiResponse<java.util.List<com.telecom.oms.customer.dto.CustomerStatusHistoryResponse>>>
+    getCustomerStatusHistory(
+            @PathVariable("accountNumber") String accountNumber) {
+
+        java.util.List<com.telecom.oms.customer.dto.CustomerStatusHistoryResponse> history =
+                customerService.getCustomerStatusHistory(accountNumber);
+
+        ApiResponse<java.util.List<com.telecom.oms.customer.dto.CustomerStatusHistoryResponse>> response =
+                new ApiResponse<>(
+                        true,
+                        "Customer status history retrieved successfully",
+                        history
+                );
+
+        return ResponseEntity.ok(response);
+    }
+
     @DeleteMapping("/{accountNumber}")
     public ResponseEntity<ApiResponse<Void>> deleteCustomer(
             @PathVariable("accountNumber") String accountNumber) {

@@ -8,6 +8,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import com.telecom.oms.customer.entity.Customer;
 import org.junit.jupiter.api.Test;
+import com.telecom.oms.customer.dto.CustomerStatusHistoryResponse;
+import java.util.List;
+import static org.mockito.Mockito.times;
 
 import java.util.Optional;
 
@@ -34,6 +37,9 @@ class CustomerServiceTest {
 
     @Mock
     private CustomerMapper customerMapper;
+
+    @Mock
+    private CustomerStatusHistoryService customerStatusHistoryService;
 
     @InjectMocks
     private CustomerService customerService;
@@ -93,6 +99,9 @@ class CustomerServiceTest {
         when(customerRepository.findByAccountNumberAndDeletedAtIsNull(accountNumber))
                 .thenReturn(Optional.of(customer));
 
+        when(customerRepository.save(customer)).thenReturn(customer);
+
+
         // Act
         customerService.updateCustomerStatus(accountNumber, request);
 
@@ -100,6 +109,11 @@ class CustomerServiceTest {
         assertEquals(CustomerStatus.SUSPENDED, customer.getStatus());
 
         verify(customerRepository).save(customer);
+        verify(customerStatusHistoryService).recordStatusChange(
+                customer,
+                CustomerStatus.ACTIVE,
+                CustomerStatus.SUSPENDED
+        );
     }
 
     @Test
@@ -117,6 +131,9 @@ class CustomerServiceTest {
         when(customerRepository.findByAccountNumberAndDeletedAtIsNull(accountNumber))
                 .thenReturn(Optional.of(customer));
 
+        when(customerRepository.save(customer)).thenReturn(customer);
+
+
         // Act
         customerService.updateCustomerStatus(accountNumber, request);
 
@@ -124,6 +141,11 @@ class CustomerServiceTest {
         assertEquals(CustomerStatus.ACTIVE, customer.getStatus());
 
         verify(customerRepository).save(customer);
+        verify(customerStatusHistoryService).recordStatusChange(
+                customer,
+                CustomerStatus.SUSPENDED,
+                CustomerStatus.ACTIVE
+        );
     }
     @Test
     void updateCustomerStatus_shouldRejectInactiveToActive() {
@@ -172,6 +194,50 @@ class CustomerServiceTest {
         assertEquals(CustomerStatus.ACTIVE, customer.getStatus());
 
         verify(customerRepository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void getCustomerStatusHistory_shouldReturnCustomerStatusHistory() {
+        // Arrange
+        String accountNumber = "GB16133324";
+
+        Customer customer = new Customer();
+        customer.setAccountNumber(accountNumber);
+
+        List<CustomerStatusHistoryResponse> expectedHistory = List.of(
+                new CustomerStatusHistoryResponse(
+                        1L,
+                        null,
+                        CustomerStatus.ACTIVE,
+                        "SYSTEM",
+                        java.time.LocalDateTime.now()
+                ),
+                new CustomerStatusHistoryResponse(
+                        2L,
+                        CustomerStatus.ACTIVE,
+                        CustomerStatus.SUSPENDED,
+                        "SYSTEM",
+                        java.time.LocalDateTime.now()
+                )
+        );
+
+        when(customerRepository.findByAccountNumberAndDeletedAtIsNull(accountNumber))
+                .thenReturn(Optional.of(customer));
+
+        when(customerStatusHistoryService.getStatusHistory(accountNumber))
+                .thenReturn(expectedHistory);
+
+        // Act
+        List<CustomerStatusHistoryResponse> actualHistory =
+                customerService.getCustomerStatusHistory(accountNumber);
+
+        // Assert
+        assertEquals(2, actualHistory.size());
+        assertEquals(CustomerStatus.ACTIVE, actualHistory.get(0).newStatus());
+        assertEquals(CustomerStatus.SUSPENDED, actualHistory.get(1).newStatus());
+
+        verify(customerStatusHistoryService, times(1))
+                .getStatusHistory(accountNumber);
     }
 
 }

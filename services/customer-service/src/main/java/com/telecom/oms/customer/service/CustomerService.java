@@ -24,14 +24,18 @@ public class CustomerService {
 
     private final CustomerRepository customerRepository;
     private final CustomerMapper customerMapper;
+    private final CustomerStatusHistoryService customerStatusHistoryService;
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
     public CustomerService(
             CustomerRepository customerRepository,
-            CustomerMapper customerMapper) {
+            CustomerMapper customerMapper,
+            CustomerStatusHistoryService customerStatusHistoryService) {
+
         this.customerRepository = customerRepository;
         this.customerMapper = customerMapper;
+        this.customerStatusHistoryService = customerStatusHistoryService;
     }
 
     @Transactional
@@ -57,6 +61,11 @@ public class CustomerService {
         customer.setAccountNumber(generateAccountNumber());
 
         Customer savedCustomer = customerRepository.save(customer);
+        customerStatusHistoryService.recordStatusChange(
+                savedCustomer,
+                null,
+                savedCustomer.getStatus()
+        );
 
         return customerMapper.toResponse(savedCustomer);
     }
@@ -167,7 +176,24 @@ public class CustomerService {
 
         Customer updatedCustomer = customerRepository.save(customer);
 
+        customerStatusHistoryService.recordStatusChange(
+                updatedCustomer,
+                currentStatus,
+                requestedStatus
+        );
+
         return customerMapper.toResponse(updatedCustomer);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.List<com.telecom.oms.customer.dto.CustomerStatusHistoryResponse>
+            getCustomerStatusHistory(String accountNumber) {
+
+        customerRepository.findByAccountNumberAndDeletedAtIsNull(accountNumber)
+                .orElseThrow(() -> new CustomerNotFoundException(
+                        "Customer not found with account number: " + accountNumber));
+
+        return customerStatusHistoryService.getStatusHistory(accountNumber);
     }
 
     @Transactional
@@ -183,3 +209,5 @@ public class CustomerService {
         customerRepository.save(customer);
     }
 }
+
+
