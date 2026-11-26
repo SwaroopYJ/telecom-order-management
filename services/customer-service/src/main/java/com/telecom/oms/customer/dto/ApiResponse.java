@@ -1,0 +1,8 @@
+package com.telecom.oms.customer.dto;
+
+public record ApiResponse<T>(
+        boolean success,
+        String message,
+        T data
+) {
+}
