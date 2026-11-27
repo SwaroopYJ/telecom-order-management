@@ -60,4 +60,12 @@ public class ProductController {
         return ResponseEntity.ok(
                 productService.getProductsByCategory(categoryCode));
     }
+    @PatchMapping("/{id}/status")
+    public ResponseEntity<ProductResponse> updateProductStatus(
+            @PathVariable Long id,
+            @RequestParam ProductStatus status) {
+
+        return ResponseEntity.ok(
+                productService.updateProductStatus(id, status));
+    }
 }

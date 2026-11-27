@@ -94,4 +94,18 @@ public class ProductService {
                 .map(productMapper::toResponse)
                 .toList();
     }
+
+    @Transactional
+    public ProductResponse updateProductStatus(Long id, ProductStatus status) {
+
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new ProductNotFoundException(
+                        "Product not found with ID: " + id));
+
+        product.setStatus(status);
+
+        Product updatedProduct = productRepository.save(product);
+
+        return productMapper.toResponse(updatedProduct);
+    }
 }

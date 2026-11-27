@@ -1,0 +1,28 @@
+
+spring:
+  application:
+    name: order-service
+  profiles:
+    active: local
+
+server:
+  port: 8083
+
+info:
+  app:
+    name: Telecom OMS Order Service
+    description: Order management and orchestration microservice
+    version: 1.0.0
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: true
