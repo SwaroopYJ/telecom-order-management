@@ -23,6 +23,15 @@ import org.springframework.web.bind.annotation.PutMapping;
 import com.telecom.oms.customer.dto.CustomerStatusUpdateRequest;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+
+
+@Tag(
+        name = "Customer Management",
+        description = "APIs for customer registration, profile management, status lifecycle and auditing"
+)
 @Validated
 @RestController
 @RequestMapping("/api/v1/customers")
@@ -33,7 +42,16 @@ public class CustomerController {
     public CustomerController(CustomerService customerService) {
         this.customerService = customerService;
     }
-
+    @Operation(
+            summary = "Create a new customer",
+            description = "Registers a new customer in the Telecom OMS system. " +
+                    "Customer account number is generated automatically and the initial status is ACTIVE."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Customer created successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid request or validation failure"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Customer already exists")
+    })
     @PostMapping
     public ResponseEntity<ApiResponse<CustomerResponse>> createCustomer(
             @Valid @RequestBody CustomerCreateRequest request) {
@@ -48,7 +66,14 @@ public class CustomerController {
 
         return ResponseEntity.status(HttpStatus.CREATED).body(apiResponse);
     }
-
+    @Operation(
+            summary = "Get customer by account number",
+            description = "Retrieves the customer profile using the unique account number. Deleted customers cannot be retrieved."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Customer retrieved successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Customer not found")
+    })
     @GetMapping("/{accountNumber}")
     public ResponseEntity<ApiResponse<CustomerResponse>> getCustomerByAccountNumber(
             @PathVariable("accountNumber") String accountNumber) {
@@ -64,6 +89,15 @@ public class CustomerController {
 
         return ResponseEntity.ok(apiResponse);
     }
+
+    @Operation(
+            summary = "Get all customers",
+            description = "Retrieves customers using pagination. Results are sorted by creation date in descending order."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Customers retrieved successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid pagination parameters")
+    })
     @GetMapping
     public ResponseEntity<ApiResponse<PageResponse<CustomerResponse>>> getAllCustomers(
             @RequestParam(name = "page", defaultValue = "0")
@@ -93,6 +127,18 @@ public class CustomerController {
 
         return ResponseEntity.ok(response);
     }
+
+
+    @Operation(
+            summary = "Update customer profile",
+            description = "Updates the customer's profile information using the account number."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Customer updated successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid request or validation failure"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Customer not found"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Duplicate customer information")
+    })
     @PutMapping("/{accountNumber}")
     public ResponseEntity<ApiResponse<CustomerResponse>> updateCustomer(
             @PathVariable("accountNumber") String accountNumber,
@@ -109,6 +155,19 @@ public class CustomerController {
 
         return ResponseEntity.ok(response);
     }
+
+
+    @Operation(
+            summary = "Update customer status",
+            description = "Changes the customer's status according to the allowed lifecycle transitions. " +
+                    "Every successful status change is recorded in customer status history."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Customer status updated successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "Invalid status request"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Customer not found"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Invalid customer status transition")
+    })
     @PatchMapping("/{accountNumber}/status")
     public ResponseEntity<ApiResponse<CustomerResponse>> updateCustomerStatus(
             @PathVariable("accountNumber") String accountNumber,
@@ -126,6 +185,14 @@ public class CustomerController {
         return ResponseEntity.ok(response);
     }
 
+    @Operation(
+            summary = "Get customer status history",
+            description = "Retrieves the chronological history of customer status changes, including previous status, new status, actor and timestamp."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Customer status history retrieved successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Customer not found")
+    })
     @GetMapping("/{accountNumber}/status-history")
     public ResponseEntity<ApiResponse<java.util.List<com.telecom.oms.customer.dto.CustomerStatusHistoryResponse>>>
     getCustomerStatusHistory(
@@ -144,6 +211,15 @@ public class CustomerController {
         return ResponseEntity.ok(response);
     }
 
+
+    @Operation(
+            summary = "Soft delete customer",
+            description = "Soft deletes a customer by marking the deletion timestamp. Customer data is retained for auditing and cannot be retrieved through active customer APIs."
+    )
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Customer deleted successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Customer not found")
+    })
     @DeleteMapping("/{accountNumber}")
     public ResponseEntity<ApiResponse<Void>> deleteCustomer(
             @PathVariable("accountNumber") String accountNumber) {
@@ -159,3 +235,4 @@ public class CustomerController {
         return ResponseEntity.ok(response);
     }
 }
+
