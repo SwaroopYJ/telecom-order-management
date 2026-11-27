@@ -1,3 +1,4 @@
+
 spring:
   application:
     name: customer-service
@@ -8,11 +9,32 @@ spring:
 server:
   port: 8081
 
+info:
+  app:
+    name: Customer Service
+    description: Telecom OMS Customer Management Microservice
+    version: 1.0.0
+
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
+
   endpoint:
     health:
-      show-details: always
+      show-details: when_authorized
+      probes:
+        enabled: true
+    info:
+      enabled: true
+
+  info:
+    env:
+      enabled: true
+
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
