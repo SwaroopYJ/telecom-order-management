@@ -1,147 +1,105 @@
 
 package com.telecom.oms.order.service;
 
-import com.telecom.oms.order.client.CustomerServiceClient;
-import com.telecom.oms.order.client.ProductServiceClient;
-import com.telecom.oms.order.dto.*;
-import com.telecom.oms.order.entity.Order;
-import com.telecom.oms.order.entity.OrderItem;
-import com.telecom.oms.order.enums.OrderStatus;
-import com.telecom.oms.order.exception.InvalidOrderException;
+import com.telecom.oms.order.dto.CreateOrderRequest;
+import com.telecom.oms.order.dto.OrderResponse;
+import com.telecom.oms.order.entity.OrderIdempotency;
+import com.telecom.oms.order.exception.IdempotencyConflictException;
 import com.telecom.oms.order.exception.OrderNotFoundException;
 import com.telecom.oms.order.mapper.OrderMapper;
+import com.telecom.oms.order.repository.OrderIdempotencyRepository;
 import com.telecom.oms.order.repository.OrderRepository;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Service
 public class OrderService {
 
     private final OrderRepository orderRepository;
-    private final CustomerServiceClient customerServiceClient;
-    private final ProductServiceClient productServiceClient;
+    private final OrderIdempotencyRepository idempotencyRepository;
+    private final OrderRequestHasher requestHasher;
+    private final OrderCreationTransactionService creationTransactionService;
 
     public OrderService(
             OrderRepository orderRepository,
-            CustomerServiceClient customerServiceClient,
-            ProductServiceClient productServiceClient) {
+            OrderIdempotencyRepository idempotencyRepository,
+            OrderRequestHasher requestHasher,
+            OrderCreationTransactionService creationTransactionService) {
+
         this.orderRepository = orderRepository;
-        this.customerServiceClient = customerServiceClient;
-        this.productServiceClient = productServiceClient;
+        this.idempotencyRepository = idempotencyRepository;
+        this.requestHasher = requestHasher;
+        this.creationTransactionService = creationTransactionService;
     }
 
-    @Transactional
-    public OrderResponse createOrder(CreateOrderRequest request) {
+    public OrderResponse createOrder(
+            CreateOrderRequest request,
+            String idempotencyKey) {
 
-        // 1. Validate customer
-        CustomerResponse customer =
-                customerServiceClient.getCustomer(request.accountNumber());
+        String requestHash = requestHasher.hash(request);
 
-        if (!"ACTIVE".equals(customer.status())) {
-            throw new InvalidOrderException(
-                    "Customer is not active: " + request.accountNumber());
+        // Check whether this key has already been used.
+        var existing = idempotencyRepository
+                .findByIdempotencyKey(idempotencyKey);
+
+        if (existing.isPresent()) {
+            return handleExistingRequest(existing.get(), requestHash);
         }
 
-        Order order = new Order();
-        order.setOrderNumber(generateOrderNumber());
-        order.setAccountNumber(customer.accountNumber());
-        order.setStatus(OrderStatus.PENDING);
+        try {
+            return creationTransactionService.createOrder(
+                    request,
+                    idempotencyKey,
+                    requestHash
+            );
 
-        BigDecimal totalAmount = BigDecimal.ZERO;
-        String orderCurrency = null;
+        } catch (DataIntegrityViolationException exception) {
 
-        // 2. Validate products and calculate order total
-        for (CreateOrderRequest.OrderItemRequest itemRequest : request.items()) {
+            // Another concurrent request may have inserted this key first.
+            var concurrentRequest = idempotencyRepository
+                    .findByIdempotencyKey(idempotencyKey);
 
-            ProductResponse product =
-                    productServiceClient.getProduct(itemRequest.productId());
-
-            if (!"ACTIVE".equals(product.status())) {
-                throw new InvalidOrderException(
-                        "Product is not active: " + product.sku());
+            if (concurrentRequest.isPresent()) {
+                return handleExistingRequest(
+                        concurrentRequest.get(),
+                        requestHash
+                );
             }
 
-            ProductPriceResponse price =
-                    getCurrentPrice(itemRequest.productId());
-
-            // All items in one order must use the same currency
-            if (orderCurrency == null) {
-                orderCurrency = price.currency();
-            } else if (!orderCurrency.equals(price.currency())) {
-                throw new InvalidOrderException(
-                        "All order items must use the same currency");
-            }
-
-            BigDecimal lineTotal = price.amount()
-                    .multiply(BigDecimal.valueOf(itemRequest.quantity()));
-
-            OrderItem orderItem = new OrderItem();
-            orderItem.setProductId(product.id());
-            orderItem.setProductSku(product.sku());
-            orderItem.setProductName(product.name());
-            orderItem.setUnitPrice(price.amount());
-            orderItem.setCurrency(price.currency());
-            orderItem.setBillingFrequency(price.billingFrequency());
-            orderItem.setQuantity(itemRequest.quantity());
-            orderItem.setLineTotal(lineTotal);
-
-            order.addItem(orderItem);
-
-            totalAmount = totalAmount.add(lineTotal);
+            throw exception;
         }
-
-        // 3. Set calculated order details
-        order.setCurrency(orderCurrency);
-        order.setTotalAmount(totalAmount);
-
-        // 4. Persist order and its items
-        Order savedOrder = orderRepository.save(order);
-
-        return OrderMapper.toResponse(savedOrder);
     }
 
     @Transactional(readOnly = true)
     public OrderResponse getOrderById(Long orderId) {
 
-        Order order = orderRepository.findById(orderId)
+        var order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new OrderNotFoundException(
                         "Order not found with ID: " + orderId));
 
         return OrderMapper.toResponse(order);
     }
 
-    private ProductPriceResponse getCurrentPrice(Long productId) {
+    private OrderResponse handleExistingRequest(
+            OrderIdempotency existing,
+            String requestHash) {
 
-        LocalDateTime now = LocalDateTime.now();
+        if (!existing.getRequestHash().equals(requestHash)) {
+            throw new IdempotencyConflictException(
+                    "Idempotency key has already been used with a different request");
+        }
 
-        return productServiceClient.getProductPrices(productId)
-                .stream()
-                .filter(price -> {
-                    LocalDateTime validFrom =
-                            LocalDateTime.parse(price.validFrom());
+        if (existing.getOrderId() == null) {
+            throw new IllegalStateException(
+                    "Idempotency record exists without a completed order");
+        }
 
-                    LocalDateTime validTo = price.validTo() == null
-                            ? null
-                            : LocalDateTime.parse(price.validTo());
+        var order = orderRepository.findWithItemsById(existing.getOrderId())
+                .orElseThrow(() -> new OrderNotFoundException(
+                        "Order linked to idempotency key was not found"));
 
-                    return !validFrom.isAfter(now)
-                            && (validTo == null || !validTo.isBefore(now));
-                })
-                .findFirst()
-                .orElseThrow(() -> new InvalidOrderException(
-                        "No currently valid price found for product ID: "
-                                + productId));
-    }
-
-    private String generateOrderNumber() {
-        return "ORD-" + UUID.randomUUID()
-                .toString()
-                .substring(0, 8)
-                .toUpperCase();
+        return OrderMapper.toResponse(order);
     }
 }

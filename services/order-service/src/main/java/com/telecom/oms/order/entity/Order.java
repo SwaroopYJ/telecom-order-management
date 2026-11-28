@@ -94,8 +94,33 @@ public class Order {
         return status;
     }
 
-    public void setStatus(OrderStatus status) {
-        this.status = status;
+    public void transitionTo(OrderStatus newStatus) {
+
+        if (newStatus == null) {
+            throw new IllegalArgumentException("Order status cannot be null");
+        }
+
+        boolean allowed = switch (this.status) {
+            case PENDING ->
+                    newStatus == OrderStatus.PROCESSING
+                            || newStatus == OrderStatus.CANCELLED
+                            || newStatus == OrderStatus.FAILED;
+
+            case PROCESSING ->
+                    newStatus == OrderStatus.CONFIRMED
+                            || newStatus == OrderStatus.CANCELLED
+                            || newStatus == OrderStatus.FAILED;
+
+            case CONFIRMED, CANCELLED, FAILED -> false;
+        };
+
+        if (!allowed) {
+            throw new IllegalStateException(
+                    "Invalid order status transition: " + this.status + " -> " + newStatus
+            );
+        }
+
+        this.status = newStatus;
     }
 
     public BigDecimal getTotalAmount() {
